@@ -41,6 +41,11 @@ double integral(INTEGRAL data, bool parallel) {
 
 #pragma omp parallel if(parallel)
 	{
+		if (omp_in_parallel()) {
+#pragma omp single
+			cout << "# of threads: " << omp_get_num_threads() << endl;
+		}
+
 #pragma omp for
 		for (int i = 0; i < n; ++i) {
 			double x = a + i * delta;

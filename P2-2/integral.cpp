@@ -22,8 +22,8 @@ int main() {
 
 void compute(INTEGRAL data, bool parallel) {
 	auto startTime = chrono::system_clock::now();
-	auto endTime = chrono::system_clock::now();
 	double area = integral(data, parallel);
+	auto endTime = chrono::system_clock::now();
 	auto period = chrono::duration_cast<chrono::milliseconds>(endTime - startTime);
 
 	cout << "Area: " << area << endl;

@@ -5,4 +5,4 @@
 using namespace std;
 
 template<typename T>
-void readNumber(T& number, string label, T min = numeric_limits<T>::lowest(), T max = numeric_limits<T>::max());
+void readNumber(T& number, string prompt, T min = numeric_limits<T>::lowest(), T max = numeric_limits<T>::max());

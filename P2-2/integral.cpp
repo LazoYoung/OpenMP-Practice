@@ -2,13 +2,14 @@
 #include <vector>
 #include <chrono>
 #include <functional>
+#include <cmath>
 #include "omp.h"
 #include "util.h"
 #include "integral.h"
 
 int main() {
 	INTEGRAL data;
-	data.fn = [](double x) { return x * x; };
+	data.fn = readFunction();
 	readNumber(data.a, "Bound a");
 	readNumber(data.b, "Bound b");
 	readNumber(data.n, "Resolution n", 1);
@@ -60,4 +61,28 @@ double integral(INTEGRAL data, bool parallel) {
 	}
 
 	return area;
+}
+
+function<double(double)> readFunction() {
+	function<double(double)> fn;
+	int mode;
+
+	cout << "[1] parabola   : y = x^2" << endl;
+	cout << "[2] sine       : y = sin(x)" << endl;
+	cout << "[3] polynomial : y = x^3 - 3x^2 + 5x + 1 " << endl;
+	readNumber(mode, "Select a function...", 1, 3);
+
+	switch (mode) {
+	case 1:
+		fn = [](double x) { return (x * x); };
+		break;
+	case 2:
+		fn = [](double x) { return sin(x); };
+		break;
+	case 3:
+		fn = [](double x) { return pow(x, 3) - 3 * pow(x, 2) + 5 * x + 1; };
+		break;
+	}
+
+	return fn;
 }

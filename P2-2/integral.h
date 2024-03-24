@@ -13,3 +13,5 @@ struct INTEGRAL {
 void compute(INTEGRAL data, bool parallel);
 
 double integral(INTEGRAL data, bool parallel);
+
+function<double(double)> readFunction();

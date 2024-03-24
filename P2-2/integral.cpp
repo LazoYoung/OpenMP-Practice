@@ -13,10 +13,10 @@ int main() {
 	readNumber(data.b, "Bound b");
 	readNumber(data.n, "Resolution n", 1);
 
-	cout << endl << "[SERIAL] Computing f(x) = x^2 ..." << endl;
+	cout << endl << "[SERIAL] Computing integral..." << endl;
 	compute(data, false);
 
-	cout << endl << "[PARALLEL] Computing f(x) = x^2 ..." << endl;
+	cout << endl << "[PARALLEL] Computing integral..." << endl;
 	compute(data, true);
 }
 

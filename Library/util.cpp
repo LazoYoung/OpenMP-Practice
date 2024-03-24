@@ -37,3 +37,5 @@ void readNumber(T& number, string label, T min, T max) {
 template void readNumber<int>(int& number, string label, int min, int max);
 
 template void readNumber<float>(float& number, string label, float min, float max);
+
+template void readNumber<double>(double& number, string label, double min, double max);

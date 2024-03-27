@@ -1,5 +1,30 @@
 #include <iostream>
+#include <vector>
 #include "util.h"
+
+int numberOfDigits(int number) {
+	int digits = (number == 0) ? 1 : 0;
+
+	while (number) {
+		number /= 10;
+		digits++;
+	}
+	return digits;
+}
+
+template <typename T>
+void print(vector<T>& vec, int trimCount) {
+	for (int i = 0; i < vec.size(); ++i) {
+		if (i >= trimCount) {
+			cout << "...and " << vec.size() - i << " more";
+			break;
+		}
+
+		cout << vec[i] << ' ';
+	}
+
+	cout << endl;
+}
 
 template <typename T>
 void readNumber(T& number, string prompt, T min, T max) {
@@ -33,6 +58,12 @@ void readNumber(T& number, string prompt, T min, T max) {
 		readNumber(number, prompt, min, max);
 	}
 }
+
+template void print(vector<int>& vec, int trimCount);
+
+template void print(vector<float>& vec, int trimCount);
+
+template void print(vector<double>& vec, int trimCount);
 
 template void readNumber<int>(int& number, string prompt, int min, int max);
 

@@ -62,19 +62,6 @@ size_t index(int r, int c, int cols) {
 	return r * cols + c;
 }
 
-void print(vector<float>& vec, int trimCount) {
-	for (int i = 0; i < vec.size(); ++i) {
-		if (i >= trimCount) {
-			cout << "..." << vec.size() - i << " more";
-			break;
-		}
-
-		cout << vec[i] << ' ';
-	}
-
-	cout << endl;
-}
-
 float getRandomFloat() {
 	static const float MAX_FLOAT = 100.0f;
 	static random_device rd;

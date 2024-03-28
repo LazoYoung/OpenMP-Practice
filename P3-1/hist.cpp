@@ -17,17 +17,14 @@ const int _VERSIONS = 4;
 const int _R_MIN = 0;
 const int _R_MAX = 10;
 const int _R_RANGE = _R_MAX - _R_MIN;
+const Algorithm algorithm[_VERSIONS] = {
+		serialized, synchronized, localBin, reduction
+};
+const string hist_name[_VERSIONS] = {
+	"v0_serial", "v1_sync", "v2_localBin", "v3_reduce"
+};
 
 int main() {
-	omp_set_nested(1);
-
-	Algorithm algorithm[_VERSIONS] = {
-		serialized, synchronized, localBin, reduction
-	};
-	string hist_name[_VERSIONS] = {
-		"v0_serial", "v1_sync", "v2_localBin", "v3_reduce"
-	};
-
 	float bin_size;
 	readNumber(bin_size, "Size of each bin", 0.00001f, (float)_R_MAX);
 	int bin_count = (int)ceil(_R_RANGE / bin_size);
@@ -48,6 +45,10 @@ int main() {
 	return 0;
 }
 
+inline int getWorkerCount() {
+	return omp_get_max_threads() - 1;
+}
+
 inline float getRandomFloat() {
 	static int precision = 1000;
 	static int div = _R_RANGE * precision;
@@ -56,7 +57,6 @@ inline float getRandomFloat() {
 
 vector<float> generateNumbers(int count) {
 	vector<float> data(count);
-	int progress = 0;
 	auto worker = [&](Work& work) {
 		int tid = work.thread_id;
 		int threads = work.num_threads;
@@ -66,44 +66,42 @@ vector<float> generateNumbers(int count) {
 
 		for (int i = start; i < end; ++i) {
 			data[i] = getRandomFloat();
-
-			#pragma omp atomic
-			++progress;
+			++work.progress;
 		}
 	};
 
 	cout << "Generating numbers... ";
-	computeParallelWork(progress, count, worker);
+	computeParallelWork(count, worker);
 	return data;
 }
 
-void computeParallelWork(int& progress, int target, function<void(Work&)> worker) {
-	#pragma omp parallel
-	{
-		int num_threads = omp_get_num_threads() - 1;
+void computeParallelWork(int target, function<void(Work&)> worker) {
+	int worker_count = getWorkerCount();
+	vector<int> progress_bin(worker_count, 0);
 
-		if (omp_get_thread_num() == num_threads) {
+	#pragma omp parallel num_threads(worker_count + 1)
+	{
+		if (omp_get_thread_num() == worker_count) {
 			int last_width = 0;
 
 			while (true) {
-				int _progress;
+				int progress = 0;
 
-				#pragma omp critical
-				{
-					_progress = progress;
+				for (int i = 0; i < worker_count; ++i) {
+					progress += progress_bin[i];
 				}
 
 				if (last_width > 0) {
 					cout << string(last_width, '\b') << string(last_width, ' ') << string(last_width, '\b');
 				}
 
-				int percent = (int)round((double)_progress / target * 100);
-				int width = numberOfDigits(_progress) + numberOfDigits(percent) + 4;
+				int percent = (int)round((double)progress / target * 100);
+				int width = numberOfDigits(progress) + numberOfDigits(percent) + 4;
 				last_width = width;
 
-				cout << _progress << " (" << percent << "%)";
+				cout << progress << " (" << percent << "%)";
 
-				if (_progress < target) {
+				if (progress < target) {
 					this_thread::sleep_for(chrono::milliseconds(500));
 				}
 				else {
@@ -113,9 +111,8 @@ void computeParallelWork(int& progress, int target, function<void(Work&)> worker
 			}
 		}
 		else {
-			Work work;
-			work.thread_id = omp_get_thread_num();
-			work.num_threads = num_threads;
+			int id = omp_get_thread_num();
+			Work work(id, worker_count, progress_bin[id]);
 
 			worker(work);
 		}
@@ -123,36 +120,34 @@ void computeParallelWork(int& progress, int target, function<void(Work&)> worker
 }
 
 void serialized(Histogram& hist) {
-	int progress = 0;
-	int dataSize = (int)hist.data.size();
+	int data_size = (int)hist.data.size();
 	auto worker = [&](Work& work) {
 		if (work.thread_id != 0) {
 			// effectively makes it serially processed
 			return;
 		}
 
-		for (int i = 0; i < dataSize; ++i) {
+		for (int i = 0; i < data_size; ++i) {
 			float number = hist.data[i];
 			int idx = (int)floor(number / hist.bin_size);
 			idx = (idx < hist.bin_count) ? idx : hist.bin_count - 1;
 
 			++hist.bin[idx];
-			++progress;
+			++work.progress;
 		}
 	};
 
-	computeParallelWork(progress, dataSize, worker);
+	computeParallelWork(data_size, worker);
 }
 
 void synchronized(Histogram& hist) {
-	int progress = 0;
-	int dataSize = (int)hist.data.size();
+	int data_size = (int)hist.data.size();
 	auto worker = [&](Work& work) {
 		int num_threads = work.num_threads;
-		int workload = dataSize / num_threads;
+		int workload = data_size / num_threads;
 		int tid = work.thread_id;
 		int start = tid * workload;
-		int end = (tid < num_threads - 1) ? (tid + 1) * workload : dataSize;
+		int end = (tid < num_threads - 1) ? (tid + 1) * workload : data_size;
 
 		for (int i = start; i < end; ++i) {
 			float number = hist.data[i];
@@ -162,16 +157,22 @@ void synchronized(Histogram& hist) {
 			#pragma omp atomic
 			++hist.bin[idx];
 
-			#pragma omp atomic
-			++progress;
+			++work.progress;
 		}
 	};
 	
-	computeParallelWork(progress, dataSize, worker);
+	computeParallelWork(data_size, worker);
 }
 
 void localBin(Histogram& hist) {
-	// todo method stub
+	int data_size = (int)hist.data.size();
+	int worker_count = getWorkerCount();
+	vector<int> local_bin(worker_count, 0);
+	auto worker = [&](Work& work) {
+		
+	};
+
+	computeParallelWork(data_size, worker);
 }
 
 void reduction(Histogram& hist) {

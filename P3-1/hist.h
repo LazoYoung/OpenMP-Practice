@@ -15,7 +15,7 @@ public:
 	float bin_size;
 	int bin_count;
 
-	Histogram(string name, vector<float>& data, float bin_size, int bin_count) :
+	Histogram(string name, vector<float>& data, float bin_size, int bin_count):
 		name(name),
 		data(data),
 		bin(bin_count, 0),
@@ -26,16 +26,26 @@ public:
 
 typedef function<void(Histogram&)> Algorithm;
 
-struct Work {
-	int thread_id;
-	int num_threads;
+class Work {
+public:
+	const int thread_id;
+	const int num_threads;
+	int& progress;
+
+	Work(int thread_id, int num_threads, int& progress):
+		thread_id(thread_id),
+		num_threads(num_threads),
+		progress(progress)
+	{}
 };
+
+inline int getWorkerCount();
 
 inline float getRandomFloat();
 
 vector<float> generateNumbers(int count);
 
-void computeParallelWork(int& progress, int target, function<void(Work&)> worker);
+void computeParallelWork(int target, function<void(Work&)> worker);
 
 void serialized(Histogram& hist);
 

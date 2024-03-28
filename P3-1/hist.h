@@ -31,11 +31,13 @@ public:
 	const int thread_id;
 	const int num_threads;
 	int& progress;
+	function<int()> get_total_progress;
 
-	Work(int thread_id, int num_threads, int& progress):
+	Work(int thread_id, int num_threads, int& progress, function<int()> get_progress):
 		thread_id(thread_id),
 		num_threads(num_threads),
-		progress(progress)
+		progress(progress),
+		get_total_progress(std::move(get_progress))
 	{}
 };
 
@@ -45,7 +47,7 @@ inline float getRandomFloat();
 
 vector<float> generateNumbers(int count);
 
-void computeParallelWork(int target, function<void(Work&)> worker);
+void computeParallelWork(int target, const function<void(Work&)>& worker);
 
 void serialized(Histogram& hist);
 
@@ -55,4 +57,4 @@ void localBin(Histogram& hist);
 
 void reduction(Histogram& hist);
 
-long long benchmark(Histogram& hist, Algorithm algorithm);
+long long benchmark(Histogram& hist, const Algorithm& algorithm);

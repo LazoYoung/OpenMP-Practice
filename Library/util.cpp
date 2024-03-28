@@ -13,9 +13,9 @@ int numberOfDigits(int number) {
 }
 
 template <typename T>
-void print(vector<T>& vec, int trimCount) {
-	for (int i = 0; i < vec.size(); ++i) {
-		if (i >= trimCount) {
+void print(vector<T>& vec, size_t trim_count) {
+	for (size_t i = 0; i < vec.size(); ++i) {
+		if (i >= trim_count) {
 			cout << "...and " << vec.size() - i << " more";
 			break;
 		}
@@ -23,7 +23,7 @@ void print(vector<T>& vec, int trimCount) {
 		cout << vec[i] << ' ';
 	}
 
-	cout << endl;
+	cout << '\n';
 }
 
 template <typename T>
@@ -49,21 +49,21 @@ void readNumber(T& number, string prompt, T min, T max) {
 			number = num;
 		}
 	}
-	catch (invalid_argument) {
+	catch (const invalid_argument&) {
 		cout << "Not a valid number." << endl;
 		readNumber(number, prompt, min, max);
 	}
-	catch (out_of_range) {
+	catch (const out_of_range&) {
 		cout << "Number out of range." << endl;
 		readNumber(number, prompt, min, max);
 	}
 }
 
-template void print(vector<int>& vec, int trimCount);
+template void print(vector<int>& vec, size_t trim_count);
 
-template void print(vector<float>& vec, int trimCount);
+template void print(vector<float>& vec, size_t trim_count);
 
-template void print(vector<double>& vec, int trimCount);
+template void print(vector<double>& vec, size_t trim_count);
 
 template void readNumber<int>(int& number, string prompt, int min, int max);
 

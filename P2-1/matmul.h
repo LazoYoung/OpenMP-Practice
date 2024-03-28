@@ -6,8 +6,6 @@ using namespace std;
 
 size_t index(int r, int c, int cols);
 
-void print(vector<float>& vec, int trimCount = 5);
-
 float getRandomFloat();
 
 vector<float> getRandomMatrix(int rows, int cols);

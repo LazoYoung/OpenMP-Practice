@@ -6,25 +6,46 @@
 #include <functional>
 #include <cmath>
 #include <cstdio>
-#include "util.h"
 #include "omp.h"
+#include "util.h"
+#include "hist.h"
 
 using namespace std;
 
+const int _DATA_COUNT = 1024 * 1024 * 1024;
+const int _VERSIONS = 4;
 const int _R_MIN = 0;
 const int _R_MAX = 10;
 const int _R_RANGE = _R_MAX - _R_MIN;
 
-struct WORKER {
-	int thread_id;
-	int num_threads;
-};
+int main() {
+	omp_set_nested(1);
 
-float getRandomUniformFloat() {
-	static random_device rd;
-	static mt19937 gen(rd());
-	static uniform_real_distribution<float> random(_R_MIN, _R_MAX);
-	return random(gen);
+	Algorithm algorithm[_VERSIONS] = {
+		serialized, synchronized, localBin, reduction
+	};
+	string hist_name[_VERSIONS] = {
+		"v0_serial", "v1_sync", "v2_localBin", "v3_reduce"
+	};
+
+	float bin_size;
+	readNumber(bin_size, "Size of each bin", 0.00001f, (float)_R_MAX);
+	int bin_count = (int)ceil(_R_RANGE / bin_size);
+	vector<float> data = generateNumbers(_DATA_COUNT);
+
+	cout << "Data: ";
+	print(data, 10);
+	cout << endl;
+
+	for (int i = 0; i < _VERSIONS; ++i) {
+		Histogram hist(hist_name[i], data, bin_size, bin_count);
+		auto seconds = benchmark(hist, algorithm[i]);
+		cout << "Bins: ";
+		print(hist.bin);
+		cout << "Elapsed time: " << seconds << "s" << endl << endl;
+	}
+
+	return 0;
 }
 
 inline float getRandomFloat() {
@@ -33,9 +54,30 @@ inline float getRandomFloat() {
 	return (float)(rand() % div) / precision + _R_MIN;
 }
 
-void computeParallelWork(int& progress, int target, string message, function<void(WORKER)> worker) {
-	cout << message;
+vector<float> generateNumbers(int count) {
+	vector<float> data(count);
+	int progress = 0;
+	auto worker = [&](Work& work) {
+		int tid = work.thread_id;
+		int threads = work.num_threads;
+		int workload = count / threads;
+		int start = tid * workload;
+		int end = (tid < threads - 1) ? (tid + 1) * workload : count;
 
+		for (int i = start; i < end; ++i) {
+			data[i] = getRandomFloat();
+
+			#pragma omp atomic
+			++progress;
+		}
+	};
+
+	cout << "Generating numbers... ";
+	computeParallelWork(progress, count, worker);
+	return data;
+}
+
+void computeParallelWork(int& progress, int target, function<void(Work&)> worker) {
 	#pragma omp parallel
 	{
 		int num_threads = omp_get_num_threads() - 1;
@@ -71,83 +113,75 @@ void computeParallelWork(int& progress, int target, string message, function<voi
 			}
 		}
 		else {
-			WORKER arg;
-			arg.thread_id = omp_get_thread_num();
-			arg.num_threads = num_threads;
+			Work work;
+			work.thread_id = omp_get_thread_num();
+			work.num_threads = num_threads;
 
-			worker(arg);
+			worker(work);
 		}
 	}
 }
 
-void generateNumbers(vector<float>& data) {
+void serialized(Histogram& hist) {
 	int progress = 0;
-	int dataSize = (int) data.size();
-	auto worker = [&](WORKER worker) {
-		int tid = worker.thread_id;
-		int threads = worker.num_threads;
-		int workload = dataSize / threads;
-		int start = tid * workload;
-		int end = (tid < threads - 1) ? (tid + 1) * workload : dataSize;
+	int dataSize = (int)hist.data.size();
+	auto worker = [&](Work& work) {
+		if (work.thread_id != 0) {
+			// effectively makes it serially processed
+			return;
+		}
 
-		for (int i = start; i < end; ++i) {
-			data[i] = getRandomFloat();
+		for (int i = 0; i < dataSize; ++i) {
+			float number = hist.data[i];
+			int idx = (int)floor(number / hist.bin_size);
+			idx = (idx < hist.bin_count) ? idx : hist.bin_count - 1;
 
-			#pragma omp atomic
+			++hist.bin[idx];
 			++progress;
 		}
 	};
 
-	computeParallelWork(progress, dataSize, "Generating numbers... ", worker);
+	computeParallelWork(progress, dataSize, worker);
 }
 
-void synchronize(vector<float>& data, vector<int>& bin, float binSize, int binCount) {
+void synchronized(Histogram& hist) {
 	int progress = 0;
-	int dataSize = (int)data.size();
-	auto worker = [&](WORKER worker) {
-		int num_threads = worker.num_threads;
+	int dataSize = (int)hist.data.size();
+	auto worker = [&](Work& work) {
+		int num_threads = work.num_threads;
 		int workload = dataSize / num_threads;
-		int tid = worker.thread_id;
+		int tid = work.thread_id;
 		int start = tid * workload;
 		int end = (tid < num_threads - 1) ? (tid + 1) * workload : dataSize;
 
 		for (int i = start; i < end; ++i) {
-			float number = data[i];
-			int idx = (int)floor(number / binSize);
-			idx = (idx < binCount) ? idx : binCount - 1;
+			float number = hist.data[i];
+			int idx = (int)floor(number / hist.bin_size);
+			idx = (idx < hist.bin_count) ? idx : hist.bin_count - 1;
 
 			#pragma omp atomic
-			++bin[idx];
+			++hist.bin[idx];
 
 			#pragma omp atomic
 			++progress;
 		}
 	};
 	
-	computeParallelWork(progress, dataSize, "[v1_sync] Populating bins... ", worker);
+	computeParallelWork(progress, dataSize, worker);
 }
 
-int main() {
-	vector<float> data(1024 * 1024 * 1024);
-	vector<int> bin;
-	float bin_size;
-	int bin_count;
+void localBin(Histogram& hist) {
+	// todo method stub
+}
 
-	omp_set_nested(1);
-	readNumber(bin_size, "Size of each bin", 0.00001f, (float) _R_MAX);
-	bin_count = (int) ceil(_R_RANGE / bin_size);
-	bin = vector<int>(bin_count);
+void reduction(Histogram& hist) {
+	// todo method stub
+}
 
+long long benchmark(Histogram& hist, Algorithm algorithm) {
+	cout << '[' << hist.name << "] Filling up... ";
 	auto startPoint = chrono::system_clock::now();
-	generateNumbers(data);
-	synchronize(data, bin, bin_size, bin_count);
-	auto duration = chrono::duration_cast<chrono::seconds>(chrono::system_clock::now() - startPoint);
-
-	cout << "Bins: ";
-	print(bin, 10);
-
-	cout << "Data: ";
-	print(data, 10);
-
-	cout << "Elapsed time: " << duration.count() << "s" << endl;
+	algorithm(hist);
+	auto latency = chrono::duration_cast<chrono::seconds>(chrono::system_clock::now() - startPoint);
+	return latency.count();
 }

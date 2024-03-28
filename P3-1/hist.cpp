@@ -50,9 +50,11 @@ inline int getWorkerCount() {
 }
 
 inline float getRandomFloat() {
-	static int precision = 1000;
-	static int div = _R_RANGE * precision;
-	return (float)(rand() % div) / precision + _R_MIN;
+	static random_device rd;
+	static mt19937 engine(rd());
+	static uniform_real_distribution dist(r_min, r_max);
+	const float random = dist(engine);
+	return random;
 }
 
 vector<float> generateNumbers(int count) {

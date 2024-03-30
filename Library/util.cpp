@@ -59,11 +59,11 @@ void readNumber(T& number, string prompt, T min, T max) {
 	}
 }
 
-template void print(vector<int>& vec, size_t trim_count);
+template void print<int>(vector<int>& vec, size_t trim_count);
 
-template void print(vector<float>& vec, size_t trim_count);
+template void print<float>(vector<float>& vec, size_t trim_count);
 
-template void print(vector<double>& vec, size_t trim_count);
+template void print<double>(vector<double>& vec, size_t trim_count);
 
 template void readNumber<int>(int& number, string prompt, int min, int max);
 

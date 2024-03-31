@@ -41,13 +41,15 @@ public:
 	{}
 };
 
+inline int getReduceCount(int init_size);
+
 inline int getWorkerCount();
 
 inline float getRandomFloat();
 
 vector<float> generateNumbers(int count);
 
-void computeParallelWork(int target, const function<void(Work&)>& worker);
+void computeParallelWork(int target, const function<void(Work&)>& worker, bool track = true);
 
 void serialized(Histogram& hist);
 

@@ -15,13 +15,17 @@ constexpr int data_count = 1024 * 1024 * 1024;
 constexpr float r_min = 0;
 constexpr float r_max = 10;
 constexpr float r_range = r_max - r_min;
-const vector<Algorithm> algo = {
-		serialized, synchronized, localBin,
-	// reduction
+const vector<Algorithm> version = {
+	serialized,
+	synchronized,
+	localBin,
+	reduction
 };
 const string hist_name[] = {
-	"v0_serial", "v1_sync", "v2_localBin",
-	// "v3_reduce"
+	"v0_serial",
+	"v1_sync",
+	"v2_localBin",
+	"v3_reduce"
 };
 
 int main() {
@@ -34,15 +38,26 @@ int main() {
 	print(data, 10);
 	cout << '\n';
 
-	for (int i = 0; i < algo.size(); ++i) {
+	for (size_t i = 0; i < version.size(); ++i) {
 		Histogram hist(hist_name[i], data, bin_size, bin_count);
-		const auto seconds = benchmark(hist, algo[i]);
+		const auto seconds = benchmark(hist, version[i]);
 		cout << "Bins: ";
 		print(hist.bin);
 		cout << "Elapsed time: " << seconds << "s\n\n";
 	}
 
 	return 0;
+}
+
+inline int getReduceCount(int init_size) {
+	double size = init_size;
+	int count = 0;
+	
+	while (size > 1.0) {
+		size = ceil(size / 2);
+		++count;
+	}
+	return count;
 }
 
 inline int getWorkerCount() {
@@ -76,8 +91,9 @@ vector<float> generateNumbers(int count) {
 	return data;
 }
 
-void computeParallelWork(int target, const function<void(Work&)>& worker) {
+void computeParallelWork(int target, const function<void(Work&)>& worker, bool track) {
 	const int worker_count = getWorkerCount();
+	const int thread_count = track ? worker_count + 1 : worker_count;
 	vector progress_bin(worker_count, 0);
 
 	auto get_progress = [&] {
@@ -88,11 +104,11 @@ void computeParallelWork(int target, const function<void(Work&)>& worker) {
 		return progress;
 	};
 
-	#pragma omp parallel num_threads(worker_count + 1)
+	#pragma omp parallel num_threads(thread_count)
 	{
 		const int thread_id = omp_get_thread_num();
 		
-		if (thread_id == worker_count) {
+		if (track && thread_id == worker_count) {
 			int last_width = 0;
 
 			while (true) {
@@ -116,9 +132,9 @@ void computeParallelWork(int target, const function<void(Work&)>& worker) {
 				}
 			}
 		}
-		else {
-			Work work(thread_id, worker_count, progress_bin[thread_id], get_progress);
 
+		if (!track || thread_id < worker_count) {
+			Work work(thread_id, worker_count, progress_bin[thread_id], get_progress);
 			worker(work);
 		}
 	}
@@ -173,7 +189,6 @@ void synchronized(Histogram& hist) {
 void localBin(Histogram& hist) {
 	const int data_size = static_cast<int>(hist.data.size());
 	const int worker_count = getWorkerCount();
-	const int target = data_size + hist.bin_count * worker_count;
 
 	auto worker = [&](const Work& w) {
 		vector local_bin(hist.bin_count, 0);
@@ -197,24 +212,24 @@ void localBin(Histogram& hist) {
 			{
 				hist.bin[i] += local_bin[i];
 			}
-			++w.progress;
 		}
 	};
 
-	computeParallelWork(target, worker);
+	computeParallelWork(data_size, worker);
 }
 
 void reduction(Histogram& hist) {
+	int epoch = 0;
+	int worker_count = getWorkerCount();
 	const int data_size = static_cast<int>(hist.data.size());
-	const int worker_count = getWorkerCount();
-	// todo review target amount
-	const int target = data_size + worker_count * hist.bin_count;
+	const int reduce_count = getReduceCount(worker_count);
+	vector local_bin(hist.bin_count * worker_count, 0);
 	
-	auto worker = [&] (const Work& w) {
-		vector local_bin(hist.bin_count, 0);
+	auto worker1 = [&] (const Work& w) {
 		const int workload = data_size / worker_count;
 		const int start = w.thread_id * workload;
 		const int end = w.thread_id < worker_count - 1 ? (w.thread_id + 1) * workload : data_size;
+		const int offset = w.thread_id * hist.bin_count;
 
 		// populate local bin with numbers
 		for (int i = start; i < end; ++i) {
@@ -222,19 +237,54 @@ void reduction(Histogram& hist) {
 			int idx = static_cast<int>(floor(number / hist.bin_size));
 			idx = idx < hist.bin_count ? idx : hist.bin_count - 1;
 
-			++local_bin[idx];
-			++w.progress;
-		}
-
-		// perform reduction
-		#pragma omp barrier
-		for (int i = 0; i < hist.bin_count; ++i) {
-			hist.bin[i] = local_bin[i];
+			++local_bin[offset + idx];
 			++w.progress;
 		}
 	};
+	
+	auto worker2 = [&] (const Work& w) {
+		// perform reduction
+		while (true) {
+			#pragma omp barrier
+			#pragma omp single
+			{
+				worker_count = worker_count > 1 ? static_cast<int>(ceil(worker_count / 2.0)) : 0;
+				++epoch;
+			}
 
-	computeParallelWork(target, worker);
+			// reduce complete
+			if (worker_count < 1) {
+				break;
+			}
+			
+			// idle threads
+			if (w.thread_id >= worker_count) {
+				continue;
+			}
+
+			const size_t offset = hist.bin_count * static_cast<size_t>(pow(2, epoch - 1));
+			const int r_start = hist.bin_count * w.thread_id * static_cast<int>(pow(2, epoch));
+			const int r_end = r_start + hist.bin_count - 1;
+
+			if ((r_end + offset) >= local_bin.size()) {
+				continue;
+			}
+			
+			for (int i = r_start; i <= r_end; ++i) {
+				local_bin[i] += local_bin[i + offset];
+			}
+		}
+
+		// copy result to histogram
+		if (w.thread_id == 0) {  // single thread region
+			for (int i = 0; i < hist.bin_count; ++i) {
+				hist.bin[i] = local_bin[i];
+			}
+		}
+	};
+	
+	computeParallelWork(data_size, worker1);
+	computeParallelWork(reduce_count, worker2, false);
 }
 
 long long benchmark(Histogram& hist, const Algorithm& algorithm) {
